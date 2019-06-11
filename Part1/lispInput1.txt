@@ -1,0 +1,184 @@
+The first part of the project requires you to write the input and output routines
+(and the SExp class as well). Here are a few suggestions on how the input routine
+might be written:
+
+If you didn't have to worry about the list notation on input i.e., all input would
+use the dotted notation, things like (A B) would be typed in as (A . (B . NIL)),
+the input routine would be simple. You could do it as follows: Let me assume that
+you have a basic input routine called ckNextToken; this routine tells you whether
+the next token is "(", ")", ".", or an identifier [these being the only possible
+tokens; actually, there is another possible token, integer, but I will let you
+take care of that one].
+
+ckNextToken doesn't actually skip to the next token; if you call it repeatedly, it
+will keep returning the same token. So you actually need another routine,
+skipToken(), that will do that but I will leave that routine, and inserting calls
+to that routine at the right places in the code below to you. Let us say
+ckNextToken returns 1, 2, 3, or 4 corresponding respectively to the four token
+types, "(", ")", ".", and identifier. [I am also leaving to you the question of
+handling the $ and $$ tokens.]
+
+Let me also assume that there is another routine, getId, which you call only if
+you know the next token is an identifier and this routine returns the actual
+identifier that is the next token [this routine also does not skip to the next
+token].  You can then write the input routine as follows:
+
+      input[] = [ eq[ckNextToken[],4] --> getId[];
+                | eq[ckNextToken[],1] --> cons[input[], input[]];
+                | T --> error!
+                ]
+
+If the next token is an identifier, we just call getId[] to read that identifier
+and return it [but don't forget to insert the call to skipToken[], else you will
+keep reading this same identifier!].
+
+By the way, note that I am assuming that getId[] will return a pointer to an SExp
+object, the one corresponding to the particular identifier, not the name of the
+identifier (in the form of a string).  One way to do this is as follows: in the
+SExp class, maintain a static variable, idPointers[], that contains pointers to
+all existing identifers:
+
+  static SExp*  idPointers[20];
+
+Whenever a new identifier is created, you add, to the idPointers[] array, a
+pointer to that SExp object. Then if you have read in a token, say, "ABC", you can
+check whether an identifier with that name already exists by going through the
+idPointers[] array and comparing "ABC" with the name of each of the existing
+identifiers. If you find a match, just use the pointer to that particular
+identifer; if there is no match, you have to construct a *new* SExp object of
+identifier type, with "ABC" as its name and use that. But also remember to add, to
+the idPointers[], a pointer to this new SExp object.  Integers are handled
+similarly but you should not keep pointers to existing integer objects etc.;
+instead, create a new SExp object corresponding to each integer that you run into.
+I have more details about this at the end of this note.
+
+Let us go back to the definition of input[] above.  If the next token is "(",
+i.e., token type is 1, we [should first skip this "(" and then] call input twice
+to read the car and the cdr of the s-expression being input, cons the two together
+and return the result [again there are several calls to skipToken() that you will
+need, including one to take care of the "." between the two calls to input[] in
+the second line of the definition].
+
+If the next token is neither an identifier nor "(", we have an error since an
+s-expression can't start with anything else.
+
+By the way, notice something interesting about the above input[] routine?  It is
+written in Lisp and is (or looks) pure functional! Well, of course, 
+ckNextToken[] and getNextToken[] etc. are not in
+Lisp but those are really low level functions; the main part of input[] *is*
+written in Lisp. Slick, isn't it? Actually, there is a subtlety here. I am
+assuming in this definition that the first argument to cons[] will be evaluated
+before its second argument. If this were not true, and the second argument were to
+be evaluated first, then if you type in something like (3 . 4), the second
+argument will be evaluated first and will evaluate to 3, then the first argument,
+which will evaluate to 4, and cons will come back with the s-expression (4 . 3)! I
+am not saying that the interpreter exchanged the two arguments; instead, it just
+evaluated them in a different order than we expect. This would not be a problem if
+we didn't have any side-effects but input[] obviously has the side- effect of
+removing an s-expression from the input stream. That is the source of the problem.
+
+Anyway, back to the input function.  What if we want to deal with lists as well?
+Note the following: If the first token is an identifier, there is no difference
+with what we have above. But if the first token is "(" then we have some
+complications; following this we may immediately have ")" which corresponds to
+NIL; if not, we will have an s-expression, let us call it S1. So our input starts
+out:
+   (S1 
+We can call input[] to read S1 recursively but what comes after that is going to
+be a bit tricky; you may have a "." in which case, we have the standard case, that
+is something like (S1.S2); or you may have ")" in which case the overall
+s-expression is (S1.NIL); or you may have something that looks like S2 ...)  [By
+the way, in this note, I am assuming that there are no extra white spaces; in
+other words, I am assuming that (3.4) will not be written as (3 .  4); you will
+have to take care of this in your implementation.]
+
+To handle these other [non-dot] cases, the easiest approach is to define another
+input routine, let us call it input2[] that reads in either ")" and returns NIL,
+or reads say S2) and returns (S2.NIL) or reads S2 S3) and returns (S2.(S3.NIL)), etc.
+
+   input2[] = [ eq[ckNextToken[],2] --> NIL;
+              | T --> cons[input[], input2[]]; ]
+
+Again appropriate calls to skipNextToken() have to be inserted but the above
+function is really simple: it either reads ")" and returns NIL, or reads, by
+calling input[], an S-expression [S2 in the discussion above] and then calls
+itself to read the rest of the list! Note the distinction between input[] and
+input2[]; the former reads a complete s-expression, the latter reads something of
+the form ")" or "S2)" or "S2 S3)" etc. *This* is why you should not try to combine
+these two functions into one because they really do different things.
+
+As I mentioned a while ago in class, some implementations of Lisp allow a "mixed" notation;
+here, you are allowed to write, say (2 3 . 5); what this means is (2 . (3 . 5)) Do
+not implement this in your project. The reason that this notation is used in
+Common Lisp, I think, is the following. Consider how you would do output. 
+You can always, of
+course, do output in the dot notation. But suppose you want to also use the list
+notation so that you don't have a lot of parentheses. Then the output routine will
+have to first check (how?)  whether the given s-expression can be output in the
+list notation; if not, use the dot notation; if yes, output in list notation.
+What they did in Common Lisp was, instead, to simply assume that the given s-exp
+can be output in list notation and proceed. So given something like (2 . (3 . 5)),
+this output routine [expecting to output something like (2 3 5)], starts by
+outputting "(", then the car [i.e., 2], then space, then cadr [i.e., 3], then
+discovers that cddr is an atom [5] and is not NIL! So the assumption that this
+could be output as a list was incorrect.  At that point, they just output a "
+. 5)".  If it had been the atom NIL, they would just have output ")", and the list
+would be complete.  Instead, since it is not NIL but is an atom, they output "
+. 5)" and expect the user to interpret (2 3 . 5) as (2 . (3 . 5))
+
+That is really ugly in my opinion! Don't do that in your implementation.  If you
+want to output using the list notation *when* possible, first check that the given
+s-expression is a list and *if* it is, proceed to output as a list; otherwise,
+output using the dot notation.
+
+One other comment: If you generally think in a "recursive descent" fashion, you
+might want to see if you can write a BNF grammar for s-expressions [including
+list, dot, and mixed notation]. A natural grammar for this will have two
+non-terminals; the routines input[] and input2[] will correspond to these.
+
+--Neelam.
+
+----------------------------------------
+Back to the problem of dealing with identifiers. As I said above, in the SExp
+class, you could maintain a static variable, idPointers[], that contains pointers 
+to all existing identifers:
+
+  static SExp*  idPointers[20];
+
+Whenever a new identifier is created, you add, to the idPointers[] array, a
+pointer to that SExp object. Then if you have read in a token, say, "ABC", you can
+check whether an identifier with that name already exists by going through the
+idPointers[] array and comparing "ABC" with the name of each of the existing
+identifiers. If you find a match, just use the pointer to that particular
+identifer; if there is no match, you have to construct a *new* SExp object of
+identifier type, with "ABC" as its name and use that. But also remember to add, to
+the idPointers[], a pointer to this new SExp object.  Integers are handled
+similarly but you should not keep pointers to existing integer objects etc.;
+instead, create a new SExp object corresponding to each integer that you run into.
+
+I think it might be useful to include, among the methods of the SExp class, a
+static method, call it, symbolicAtom():
+
+  static SExp* symbolicAtom(String s);
+
+Essentially, this method should receive, as argument, a string (such as "CAR" or
+"XYZ"), and return the pointer to the SExp object corresponding to the symbolic
+atom whose name matches that string. If the given string is something like "CAR",
+the returned object will be an existing symbolic atom; if it is something like
+"XYZ" that we have *not* encountered before, it will create a new SExp object of
+type symbolic atom, set its name to the given string, add it to the icPointers[],
+and return a pointer to this new object. There could be another method,
+integerAtom() that takes a number as argument and returns a pointer to a (newly
+constructed) SExp object corresponding to that number.
+
+Given these methods, the input[] routine doesn't have to know anything about the
+internal details of the SExp class. Moreover, the initialization can be done easily. 
+You can write things such as:
+
+  SExp* resCAR = SExp.symbolicAtom("CAR");
+
+I am not sure if the above (C++-style) syntax is correct but effectively the call
+to symbolicAtom() should make an atomic object whose name is "CAR" and I am
+setting the value of resCAR to be the pointer to that object. So later on, when
+the input[] reads the token "CAR" from the input stream, the value it returns will
+match this pointer.

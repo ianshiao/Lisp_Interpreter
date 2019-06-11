@@ -1,0 +1,90 @@
+In the first part, I tried to explain how input[] works by writing a 
+Lisp-like definition for it. Let me try a more imperative-style 
+explanation here. First recall that there are only four token types, 
+"(", ")", ".", and atom. In the previous message, I had numbered these
+1, 2, 3, 4 respectively; but it might make sense to split the last
+case into two, i.e., integer and symbol; so let us say 4 corresponds
+to integer atoms and 5 corresponds to symbolic atoms. (Again I am ignoring
+$, $$.)
+
+So, in a C++ style, if we want to deal only with dotted notation,
+input() might look roughly like:
+
+  SExp* input() {
+
+    int nxtToken = ckNextToken();
+
+    if (nxtToken == 2 or 3 // error! why?
+
+    if (nxtToken == 1) {  // non-atomic s-exp
+       skipToken(); // skip the "("
+       SExp* s1 = input(); nxtToken = ckNextToken();
+       if (nxtToken != 3) { ...error! need dot between car, cdr... }
+       skipToken(); // skip the "."
+       SExp* s2 = input();  
+       // also need to check for and skip the final ")"; how?
+       return(cons(s1, s2)); // ** see below **N
+       }
+
+    if (nxtToken == 4) { // integer atom
+       int i = getIntToken(); // this function reads the integer
+                   // token, and returns it, as an integer; also skips it
+       return(new SExp(i)); // The SExp class should have three 
+                  // constructors. The first will accept two
+                  // arguments both of which are pointers to existing 
+                  // SExp objects and returns a new SExp which is the
+                  // cons of the given SExp; in fact, cons simply
+                  // calls this constructor; thus the call to cons 
+                  // in the previous case (with the "**see below**" 
+                  // comment) will just call this constructor.
+                  // The second constructor will correspond to 
+                  // integer atom; this constructor takes an int 
+                  // value as argument and returns an integer atom whose 
+                  // intValue component is the given int. 
+                  // The third constructor corresponds to constructing
+                  // a symbolic atom; see next case.
+       }
+
+    if (nxtToken == 5) { // symbolic atom; let me not write code for
+                  // this case; I will just try to explain it.
+
+Suppose the next token is, say, "ABC". We cannot then just create a
+new atomic SExp object whose "name" field has the value "ABC". This is
+because we may already have an atomic SExp object with that name. That
+is why, as I said in my last post, you need to keep a (static) array
+containing pointers to all existing (symbolic) atoms so that you can
+search through that array of objects to see if there is one whose name
+field matches "ABC". If you find one that does, you just return a
+pointer to that SExp object, rather than creating a new one. If you
+don't find one that matches, then you create a new symbolic atomic
+SExp object (using the third constructor of SExp) and return a pointer
+to this object as the result. Also, the constructor should add a
+pointer to this object to the static array so that the next time we
+come across this same name on input, we will find this object.
+
+One other important point: Before your interpreter reads in the first
+Lisp expression to evaluate, it will have to create a whole bunch of
+symbolic atomic SExp objects. These will be the atoms whose names 
+are "T", "NIL", "CAR", "CDR", "CONS", ..., "PLUS", "MINUS", ...;
+in other words, the atoms that have special meaning to the Lisp
+interpreter. To do this, you will need a series of lines such as:
+
+   SEXp* tptr = new SEXp("T");
+   SEXp* nilptr = new SEXp("NIL");
+   SEXp* carptr = new SEXp("CAR");
+   ...
+
+Then, in a function such as apply() [a key part of evaluate() that we will
+look at shortly and that will be part of Part 2 of the project]], you can 
+check whether thefunction to be applied is, say, CAR as follows:
+
+  SExp* apply(SExp* f, SExp* eal, SExp* alist, SExp* dlist) { 
+         // f is the function to be applied; eal the evaluated 
+         // argument list; alist and dlist the a-list and d-lists
+    if (f == carptr) { ...have to apply CAR...}
+    if (f == cdrptr) { ...have to apply CDR...}
+
+
+Hope all that made sense. If you have questions, email or post to Piazza.
+
+--Neelam.
